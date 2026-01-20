@@ -3,13 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OFFSHORE FOCUS: Engineering Pomodoro</title>
-    
-    <!-- Vercel Web Analytics -->
-    <script>
-        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/insights/script.js"></script>
+    <title>ENGINEERING FLOW: Focus Timer</title>
     
     <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -30,6 +24,13 @@
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        
+        /* Toast Animation */
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-toast { animation: fade-in-up 0.3s ease-out forwards; }
     </style>
 </head>
 <body>
@@ -70,6 +71,11 @@
         const Hammer = createLucideIcon('Hammer');
         const Settings = createLucideIcon('Settings');
         const HardHat = createLucideIcon('HardHat');
+        const Truck = createLucideIcon('Truck');
+        const Lock = createLucideIcon('Lock');
+        const Unlock = createLucideIcon('Unlock');
+        const AlertCircle = createLucideIcon('AlertCircle');
+        const CheckCircle = createLucideIcon('CheckCircle');
 
         // --- AUDIO ENGINE ---
         class AmbientSynth {
@@ -199,6 +205,8 @@
         function PipelineMaster() {
             const [currentTheme, setCurrentTheme] = useState('MARINE');
             const [isMenuOpen, setIsMenuOpen] = useState(false);
+            const [isLocked, setIsLocked] = useState(false);
+            const [toast, setToast] = useState(null); // { message: string, type: 'info' | 'error' | 'success' }
             
             const [mode, setMode] = useState('WORK');
             const [selectedWorkDuration, setSelectedWorkDuration] = useState(25);
@@ -218,6 +226,7 @@
             
             const audioSynth = useRef(new AmbientSynth());
             const timerRef = useRef(null);
+            const endTimeRef = useRef(null); 
             const weatherTimerRef = useRef(null);
             const eventTimerRef = useRef(null);
             const [visualProgress, setVisualProgress] = useState(0);
@@ -232,25 +241,116 @@
                 return buildings;
             }, []);
 
-            // --- CORE LOGIC ---
-            
-            // Timer Functionality
-            useEffect(() => {
-                if (isActive && timeLeft > 0) {
-                    timerRef.current = setInterval(() => {
-                        setTimeLeft((prev) => prev - 1);
-                    }, 1000);
-                } else if (timeLeft === 0) {
-                    // Timer Finished
-                    clearInterval(timerRef.current);
-                    setIsActive(false);
-                    audioSynth.current.stop();
-                    if (mode === 'WORK') {
-                        switchMode('SHORT_BREAK');
+            // --- TOAST HELPER ---
+            const showToast = (message, type = 'info') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            // --- LOCK / FULLSCREEN LOGIC ---
+            const toggleLock = async () => {
+                if (!isLocked) {
+                    showToast("🔒 Meminta akses Fullscreen...", "info");
+                    try {
+                        const elem = document.documentElement;
+                        if (elem.requestFullscreen) {
+                            await elem.requestFullscreen();
+                        } else if (elem.webkitRequestFullscreen) {
+                            await elem.webkitRequestFullscreen();
+                        } else if (elem.msRequestFullscreen) {
+                            await elem.msRequestFullscreen();
+                        }
+                        showToast("✅ Mode Fokus Aktif", "success");
+                    } catch (e) {
+                        console.log("Fullscreen blocked:", e);
+                        showToast("⚠️ Fullscreen ditolak. Mode Fokus Jendela aktif.", "error");
                     }
+                    setIsLocked(true);
+                    setIsMenuOpen(false); // Close menu forcefully
+                } else {
+                    try {
+                        if (document.exitFullscreen) {
+                            await document.exitFullscreen();
+                        } else if (document.webkitExitFullscreen) {
+                            await document.webkitExitFullscreen();
+                        } else if (document.msExitFullscreen) {
+                            await document.msExitFullscreen();
+                        }
+                    } catch (e) {
+                        console.log("Exit fullscreen error:", e);
+                    }
+                    setIsLocked(false);
+                    showToast("🔓 Mode Fokus Nonaktif", "info");
                 }
-                return () => clearInterval(timerRef.current);
-            }, [isActive, timeLeft, mode]);
+            };
+
+            // Visibility Change Listener (Tab Switching Alert)
+            useEffect(() => {
+                const handleVisibilityChange = () => {
+                    if (document.hidden && isActive) {
+                        document.title = "⚠️ KEMBALI FOKUS! - ENGINEERING FLOW";
+                    } else {
+                        document.title = `ENGINEERING FLOW: Focus Timer`;
+                    }
+                };
+
+                document.addEventListener("visibilitychange", handleVisibilityChange);
+                return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+            }, [isActive]);
+
+            // --- REQUEST PERMISSION ON LOAD ---
+            useEffect(() => {
+                if (Notification.permission !== "granted") {
+                    Notification.requestPermission();
+                }
+            }, []);
+
+            // --- CORE LOGIC WITH DRIFT FIX ---
+            useEffect(() => {
+                let interval = null;
+                if (isActive) {
+                    if (!endTimeRef.current) {
+                        endTimeRef.current = Date.now() + timeLeft * 1000;
+                    }
+
+                    interval = setInterval(() => {
+                        const now = Date.now();
+                        const distance = endTimeRef.current - now;
+                        const secondsLeft = Math.ceil(distance / 1000);
+
+                        if (secondsLeft >= 0) {
+                            setTimeLeft(secondsLeft);
+                            if (!document.hidden) {
+                                document.title = `${formatTime(secondsLeft)} - ${currentTheme} FLOW`;
+                            }
+                        } else {
+                            clearInterval(interval);
+                            setIsActive(false);
+                            endTimeRef.current = null;
+                            setTimeLeft(0);
+                            document.title = "MISSION COMPLETE!";
+                            audioSynth.current.stop();
+
+                            if (Notification.permission === "granted") {
+                                new Notification("Mission Complete!", {
+                                    body: mode === 'WORK' ? "Work session finished. Take a break!" : "Break over. Back to work!",
+                                    icon: "https://cdn-icons-png.flaticon.com/512/2921/2921226.png"
+                                });
+                            }
+                            const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+                            audio.play().catch(e => console.log("Audio play failed", e));
+
+                            if (mode === 'WORK') {
+                                switchMode('SHORT_BREAK');
+                            }
+                        }
+                    }, 1000);
+                } else {
+                    endTimeRef.current = null;
+                    if (!document.hidden) document.title = "ENGINEERING FLOW: Paused";
+                }
+                return () => clearInterval(interval);
+            }, [isActive, mode, currentTheme]);
 
             // Weather Cycle
             useEffect(() => {
@@ -287,7 +387,6 @@
                         return Math.abs(diff) < 0.01 ? targetProgress : prev + diff * 0.05;
                     });
 
-                    // Marine Physics
                     if (currentTheme === 'MARINE') {
                         const tideTime = Date.now() / 3000;
                         const tide = Math.sin(tideTime) * 10; 
@@ -331,8 +430,8 @@
             }, [isActive, currentSound]);
 
             const switchMode = (newModeId) => {
-                // Force stop before switching
                 setIsActive(false);
+                endTimeRef.current = null; 
                 setTimeout(() => {
                     setMode(newModeId);
                     const newMode = MODES[newModeId];
@@ -362,17 +461,28 @@
                             <h3 className="text-xs font-bold text-slate-500 mb-2 uppercase">Theme</h3>
                             <div className="space-y-2">
                                 {THEMES.map(theme => (
-                                    <button key={theme.id} onClick={() => { setCurrentTheme(theme.id); setIsMenuOpen(false); }} className={`w-full flex items-center gap-3 p-3 rounded text-sm font-bold transition-all ${currentTheme === theme.id ? 'bg-slate-800 text-white border border-slate-600' : 'text-slate-400 hover:bg-slate-800/50'}`}>
+                                    <button 
+                                        key={theme.id} 
+                                        onClick={() => { setCurrentTheme(theme.id); setIsMenuOpen(false); }} 
+                                        disabled={isLocked} // Disable when locked
+                                        className={`w-full flex items-center gap-3 p-3 rounded text-sm font-bold transition-all ${currentTheme === theme.id ? 'bg-slate-800 text-white border border-slate-600' : 'text-slate-400 hover:bg-slate-800/50'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
                                         <span className={theme.color}>{theme.icon}</span> {theme.label}
                                     </button>
                                 ))}
                             </div>
+                            {isLocked && <p className="text-[10px] text-red-400 mt-2 italic">*Unlock to change theme</p>}
                         </div>
                         <div>
                             <h3 className="text-xs font-bold text-slate-500 mb-2 uppercase">Audio</h3>
                             <div className="space-y-1">
                                 {AMBIENT_SOUNDS.map(sound => (
-                                    <button key={sound.id} onClick={() => setCurrentSound(sound.id)} className={`w-full flex items-center gap-2 p-2 rounded text-xs font-mono transition-all ${currentSound === sound.id ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                    <button 
+                                        key={sound.id} 
+                                        onClick={() => setCurrentSound(sound.id)} 
+                                        disabled={isLocked} // Disable when locked
+                                        className={`w-full flex items-center gap-2 p-2 rounded text-xs font-mono transition-all ${currentSound === sound.id ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800' : 'text-slate-400 hover:bg-slate-800'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
                                         {sound.icon} {sound.label}
                                     </button>
                                 ))}
@@ -561,7 +671,7 @@
                                 {currentTheme === 'MARINE' && <Anchor />} {currentTheme === 'CIVIL' && <Hammer />} {currentTheme === 'MECH' && <Settings />}
                             </div>
                             <div>
-                                <h1 className="text-xl font-black tracking-widest uppercase text-white drop-shadow-md">{currentTheme === 'CIVIL' ? 'CONSTRUCTION FOCUS' : 'OFFSHORE FOCUS'} <span className="text-amber-500 text-xs align-top ml-1">V7.3</span></h1>
+                                <h1 className="text-xl font-black tracking-widest uppercase text-white drop-shadow-md">{currentTheme === 'CIVIL' ? 'CONSTRUCTION FOCUS' : 'ENGINEERING FLOW'} <span className="text-amber-500 text-xs align-top ml-1">V7.6</span></h1>
                                 <span className="text-[10px] text-white/50 tracking-[0.2em] font-mono block">{currentTheme === 'MARINE' ? 'MARINE POMODORO' : currentTheme === 'CIVIL' ? 'CONSTRUCTION POMODORO' : 'ENGINEERING POMODORO'}</span>
                             </div>
                         </div>
@@ -570,6 +680,9 @@
                                 {currentTheme === 'MARINE' && <><Waves size={12} /><span>TIDE: {(tideLevel > 0 ? '+' : '')}{tideLevel.toFixed(1)}m</span></>}
                                 {currentTheme === 'CIVIL' && <><HardHat size={12} className="text-orange-400"/><span className="text-orange-400">PROGRESS: {Math.round(visualProgress)}%</span></>}
                             </div>
+                            <button onClick={toggleLock} className={`p-2 rounded transition-colors ${isLocked ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'hover:bg-slate-800 text-white'}`} title="Focus Mode (Fullscreen)">
+                                {isLocked ? <Lock size={20}/> : <Unlock size={20}/>}
+                            </button>
                             <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-slate-800 rounded transition-colors text-white"><Menu /></button>
                         </div>
                     </header>
@@ -615,6 +728,13 @@
                             </div>
                         </div>
                     </footer>
+                    {toast && (
+                        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm font-bold shadow-lg animate-toast flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-900 text-red-200 border border-red-700' : toast.type === 'success' ? 'bg-green-900 text-green-200 border border-green-700' : 'bg-slate-800 text-white border border-slate-600'}`}>
+                            {toast.type === 'error' && <AlertCircle size={16}/>}
+                            {toast.type === 'success' && <CheckCircle size={16}/>}
+                            {toast.message}
+                        </div>
+                    )}
                     <style dangerouslySetInnerHTML={{__html: `
                         @keyframes slideDown { from { background-position: 0 0; } to { background-position: 0 100%; } }
                         .animate-slide-down { animation: slideDown 1s linear infinite; }
@@ -638,6 +758,8 @@
                         .animate-bed-tilt { animation: bed-tilt 18s ease-in-out infinite; }
                         @keyframes crane-swing { 0% { transform: rotate(0deg); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } 100% { transform: rotate(0deg); } }
                         .animate-crane-swing { animation: crane-swing 12s ease-in-out infinite; }
+                        @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+                        .animate-toast { animation: fade-in-up 0.3s ease-out forwards; }
                     `}} />
                 </div>
             );
