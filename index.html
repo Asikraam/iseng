@@ -20,24 +20,30 @@
 
     <style>
         /* Base styles */
-        body { margin: 0; background-color: #0f172a; color: #e2e8f0; overflow-x: hidden; }
+        body { margin: 0; background-color: #0f172a; color: #e2e8f0; overflow-x: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         
-        /* Toast Animation */
+        /* Custom Animations */
         @keyframes fade-in-up {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .animate-toast { animation: fade-in-up 0.3s ease-out forwards; }
+        
+        /* Rain Animation (Downward) */
+        @keyframes rain-fall {
+            0% { background-position: 0 0; }
+            100% { background-position: 10% 100vh; }
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef, useMemo } = React;
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
         // --- ICON HELPER ---
         const createLucideIcon = (iconName) => ({ color = "currentColor", size = 24, strokeWidth = 2, className, ...props }) => {
@@ -48,140 +54,132 @@
             );
         };
 
-        // Icons
-        const Play = createLucideIcon('Play');
-        const Pause = createLucideIcon('Pause');
-        const Square = createLucideIcon('Square');
-        const Anchor = createLucideIcon('Anchor');
-        const CloudRain = createLucideIcon('CloudRain');
-        const CloudLightning = createLucideIcon('CloudLightning');
-        const Sun = createLucideIcon('Sun');
-        const CloudFog = createLucideIcon('CloudFog');
-        const Zap = createLucideIcon('Zap');
-        const Search = createLucideIcon('Search');
-        const Wind = createLucideIcon('Wind');
-        const Moon = createLucideIcon('Moon');
-        const Sunrise = createLucideIcon('Sunrise');
-        const LifeBuoy = createLucideIcon('LifeBuoy');
-        const Cloud = createLucideIcon('Cloud');
-        const Waves = createLucideIcon('Waves');
-        const Menu = createLucideIcon('Menu');
-        const X = createLucideIcon('X');
-        const VolumeX = createLucideIcon('VolumeX');
-        const Hammer = createLucideIcon('Hammer');
-        const Settings = createLucideIcon('Settings');
-        const HardHat = createLucideIcon('HardHat');
-        const Truck = createLucideIcon('Truck');
-        const Lock = createLucideIcon('Lock');
-        const Unlock = createLucideIcon('Unlock');
-        const AlertCircle = createLucideIcon('AlertCircle');
-        const CheckCircle = createLucideIcon('CheckCircle');
+        const Icons = {
+            Play: createLucideIcon('Play'), Pause: createLucideIcon('Pause'), Square: createLucideIcon('Square'),
+            Anchor: createLucideIcon('Anchor'), CloudRain: createLucideIcon('CloudRain'), CloudLightning: createLucideIcon('CloudLightning'),
+            Sun: createLucideIcon('Sun'), CloudFog: createLucideIcon('CloudFog'), Zap: createLucideIcon('Zap'),
+            Search: createLucideIcon('Search'), Wind: createLucideIcon('Wind'), Moon: createLucideIcon('Moon'),
+            Sunrise: createLucideIcon('Sunrise'), LifeBuoy: createLucideIcon('LifeBuoy'), Cloud: createLucideIcon('Cloud'),
+            Waves: createLucideIcon('Waves'), Menu: createLucideIcon('Menu'), X: createLucideIcon('X'),
+            VolumeX: createLucideIcon('VolumeX'), Hammer: createLucideIcon('Hammer'), Settings: createLucideIcon('Settings'),
+            HardHat: createLucideIcon('HardHat'), Truck: createLucideIcon('Truck'), Lock: createLucideIcon('Lock'),
+            Unlock: createLucideIcon('Unlock'), AlertCircle: createLucideIcon('AlertCircle'), CheckCircle: createLucideIcon('CheckCircle'),
+            Coffee: createLucideIcon('Coffee'), Clock: createLucideIcon('Clock'), RefreshCw: createLucideIcon('RefreshCw')
+        };
 
         // --- AUDIO ENGINE ---
         class AmbientSynth {
-            constructor() {
-                this.ctx = null;
-                this.nodes = [];
-            }
-            init() {
-                if (!this.ctx) {
-                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-                }
-            }
-            stop() {
-                this.nodes.forEach(n => { try { n.stop(); n.disconnect(); } catch(e){} });
-                this.nodes = [];
-            }
+            constructor() { this.ctx = null; this.nodes = []; }
+            init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+            stop() { this.nodes.forEach(n => { try { n.stop(); n.disconnect(); } catch(e){} }); this.nodes = []; }
             play(type) {
-                this.init();
-                this.stop();
-                if (this.ctx.state === 'suspended') this.ctx.resume();
-
+                this.init(); this.stop(); if (this.ctx.state === 'suspended') this.ctx.resume();
                 const ctx = this.ctx;
                 const bufferSize = 2 * ctx.sampleRate;
                 const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
                 const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
-
-                const noise = ctx.createBufferSource();
-                noise.buffer = buffer;
-                noise.loop = true;
-                const gain = ctx.createGain();
-                const filter = ctx.createBiquadFilter();
-
-                if (type === 'waves') {
-                    filter.type = 'lowpass'; filter.frequency.value = 400; gain.gain.value = 0.15;
-                    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.1; 
-                    const lfoGain = ctx.createGain(); lfoGain.gain.value = 300;
-                    lfo.connect(lfoGain); lfoGain.connect(filter.frequency); lfo.start(); this.nodes.push(lfo);
-                } else if (type === 'engine') {
-                    filter.type = 'lowpass'; filter.frequency.value = 120; gain.gain.value = 0.25;
-                } else if (type === 'rain') {
-                    filter.type = 'lowpass'; filter.frequency.value = 800; gain.gain.value = 0.1;
-                } else if (type === 'underwater') {
-                    filter.type = 'lowpass'; filter.frequency.value = 200; filter.Q.value = 10; gain.gain.value = 0.3;
-                } else if (type === 'wind') {
-                    filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 1; gain.gain.value = 0.1;
-                    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.2; 
-                    const lfoGain = ctx.createGain(); lfoGain.gain.value = 200; 
-                    lfo.connect(lfoGain); lfoGain.connect(filter.frequency); lfo.start(); this.nodes.push(lfo);
-                }
-                noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
-                noise.start(); this.nodes.push(noise);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = ctx.createBufferSource(); noise.buffer = buffer; noise.loop = true;
+                const gain = ctx.createGain(); const filter = ctx.createBiquadFilter();
+                
+                if (type === 'waves') { filter.type = 'lowpass'; filter.frequency.value = 400; gain.gain.value = 0.15; const lfo = ctx.createOscillator(); lfo.frequency.value = 0.1; const lg = ctx.createGain(); lg.gain.value = 300; lfo.connect(lg); lg.connect(filter.frequency); lfo.start(); this.nodes.push(lfo); }
+                else if (type === 'engine') { filter.type = 'lowpass'; filter.frequency.value = 120; gain.gain.value = 0.25; }
+                else if (type === 'rain') { filter.type = 'lowpass'; filter.frequency.value = 800; gain.gain.value = 0.1; }
+                else if (type === 'underwater') { filter.type = 'lowpass'; filter.frequency.value = 200; filter.Q.value = 10; gain.gain.value = 0.3; }
+                else if (type === 'wind') { filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 1; gain.gain.value = 0.1; const lfo = ctx.createOscillator(); lfo.frequency.value = 0.2; const lg = ctx.createGain(); lg.gain.value = 200; lfo.connect(lg); lg.connect(filter.frequency); lfo.start(); this.nodes.push(lfo); }
+                
+                noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination); noise.start(); this.nodes.push(noise);
             }
         }
 
-        // --- DATA ---
+        // --- CONSTANTS ---
         const AMBIENT_SOUNDS = [
-            { id: 'mute', label: 'Mute (Silent)', icon: <VolumeX size={14}/> },
-            { id: 'waves', label: 'Ocean Waves', icon: <Waves size={14}/> },
-            { id: 'engine', label: 'Heavy Machinery', icon: <Settings size={14}/> },
-            { id: 'rain', label: 'Rain', icon: <CloudRain size={14}/> },
-            { id: 'underwater', label: 'Underwater', icon: <Anchor size={14}/> },
-            { id: 'wind', label: 'High Altitude', icon: <Wind size={14}/> },
+            { id: 'mute', label: 'Mute', icon: <Icons.VolumeX size={14}/> },
+            { id: 'waves', label: 'Waves', icon: <Icons.Waves size={14}/> },
+            { id: 'engine', label: 'Engine', icon: <Icons.Settings size={14}/> },
+            { id: 'rain', label: 'Rain', icon: <Icons.CloudRain size={14}/> },
+            { id: 'underwater', label: 'Deep Sea', icon: <Icons.Anchor size={14}/> },
+            { id: 'wind', label: 'Wind', icon: <Icons.Wind size={14}/> },
         ];
 
         const THEMES = [
-            { id: 'MARINE', label: 'Marine Engineering', icon: <Anchor size={16}/>, color: 'text-cyan-400' },
-            { id: 'CIVIL', label: 'Civil Engineering', icon: <Hammer size={16}/>, color: 'text-orange-400' },
-            { id: 'MECH', label: 'Mechanical Eng.', icon: <Settings size={16}/>, color: 'text-red-400' },
+            { id: 'MARINE', label: 'Marine Engineering', icon: <Icons.Anchor size={16}/>, color: 'text-cyan-400' },
+            { id: 'CIVIL', label: 'Civil Engineering', icon: <Icons.Hammer size={16}/>, color: 'text-orange-400' },
+            { id: 'MECH', label: 'Mechanical Eng.', icon: <Icons.Settings size={16}/>, color: 'text-red-400' },
         ];
 
         const FACT_DATABASE = {
             MARINE: [
-                "Tekanan hidrostatik bertambah 1 atm setiap kedalaman 10 meter.",
-                "Sistem DP (Dynamic Positioning) menjaga posisi kapal tanpa jangkar.",
-                "Pipa bawah laut dilapisi beton (Concrete Weight Coating) agar stabil.",
-                "Las Hyperbaric dilakukan di habitat kering di dasar laut.",
-                "Stinger menjaga kelengkungan pipa agar tidak buckling saat instalasi.",
-                "Anoda korban mencegah korosi pada kaki jacket platform.",
-                "Kapal 'Pioneering Spirit' adalah kapal konstruksi terbesar di dunia.",
-                "Teknologi 'S-Lay' membentuk kurva S, 'J-Lay' membentuk kurva J.",
-                "Free Span pada pipa berbahaya karena getaran arus laut."
+                "Tekanan hidrostatik bertambah 1 atm (14.7 psi) setiap kedalaman 10 meter.",
+                "Sistem DP (Dynamic Positioning) menjaga posisi kapal menggunakan thruster dan GPS tanpa jangkar.",
+                "Pipa bawah laut dilapisi Concrete Weight Coating agar stabil di dasar laut.",
+                "Las Hyperbaric dilakukan di habitat kering di dasar laut bertekanan tinggi.",
+                "ROV Work Class memiliki tenaga hingga 200 HP untuk memutar katup subsea.",
+                "Palung Mariana sedalam 10.994 meter, lebih tinggi dari Gunung Everest.",
+                "Stinger pada lay barge menjaga kelengkungan pipa agar tidak buckling (bengkok).",
+                "Anoda korban (Zinc/Aluminium) mencegah korosi pada kaki jacket platform.",
+                "Kapal 'Pioneering Spirit' mampu mengangkat topside rig seberat 48.000 ton sekaligus.",
+                "Riser adalah pipa penghubung vertikal dari dasar laut ke fasilitas terapung.",
+                "FPSO (Floating Production Storage Offloading) memproses dan menyimpan minyak di tengah laut.",
+                "Gelombang Rogue bisa mencapai tinggi 30 meter dan muncul tiba-tiba.",
+                "Satu mata rantai jangkar kapal tanker bisa seberat mobil kecil.",
+                "Kecepatan suara di air (1500 m/s) lebih cepat 4x dibanding di udara.",
+                "Saturation Diving memungkinkan penyelam tinggal di kedalaman selama 28 hari.",
+                "Kabel internet bawah laut membawa 99% data dunia, bukan satelit.",
+                "Offshore Wind Farm menggunakan pondasi Monopile atau Jacket di laut dangkal.",
+                "BOP (Blowout Preventer) adalah katup pengaman utama sumur pengeboran.",
+                "Platform Spar sangat stabil di laut dalam karena bentuk silindernya yang dalam.",
+                "Metode J-Lay digunakan untuk memasang pipa di perairan sangat dalam (>1000m).",
+                "Turret Mooring membiarkan FPSO berputar 360 derajat mengikuti arah angin.",
+                "Splash Zone pada kaki rig harus dilapisi Monel atau cat khusus anti korosi.",
+                "Pigging adalah proses pembersihan bagian dalam pipa menggunakan alat PIG.",
+                "Moonpool adalah lubang di tengah kapal untuk menurunkan peralatan ke laut.",
+                "Umbilical menyalurkan listrik, hidrolik, dan bahan kimia ke peralatan subsea.",
+                "Decommissioning adalah proses pembongkaran platform yang sudah habis masa pakainya.",
+                "Free Span terjadi saat pipa menggantung di antara dua bukit dasar laut.",
+                "Mattress beton digunakan untuk menutupi dan melindungi pipa di dasar laut.",
+                "Derrick Barge memiliki crane raksasa yang bisa berputar 360 derajat.",
+                "AUV (Autonomous Underwater Vehicle) memetakan dasar laut tanpa kabel tether."
             ],
             CIVIL: [
-                "Beton mencapai kekuatan maksimalnya setelah 28 hari pengerasan.",
-                "Burj Khalifa menggunakan sistem struktur 'Buttressed Core'.",
-                "Slump Test digunakan untuk mengukur kekentalan adukan beton.",
-                "Pondasi Bore Pile memindahkan beban ke lapisan tanah keras.",
-                "Tulangan sengkang pada balok berfungsi menahan gaya geser.",
-                "Beban mati (Dead Load) adalah berat struktur itu sendiri.",
+                "Beton mencapai 99% kekuatan maksimalnya setelah 28 hari pengerasan (curing).",
+                "Burj Khalifa menggunakan sistem struktur 'Buttressed Core' untuk menahan angin.",
+                "Slump Test digunakan untuk mengukur kekentalan (workability) adukan beton.",
+                "Pondasi Bore Pile memindahkan beban bangunan ke lapisan tanah keras (bedrock).",
+                "Tulangan sengkang (stirrup) pada balok berfungsi menahan gaya geser.",
+                "Beban mati (Dead Load) adalah berat struktur itu sendiri (kolom, balok, lantai).",
                 "Tower Crane tumbuh bersama bangunan menggunakan sistem 'self-climbing'.",
-                "Segregasi adalah pemisahan kerikil dari adukan beton.",
-                "Retaining Wall berfungsi menahan tanah agar tidak longsor."
+                "Segregasi adalah pemisahan kerikil dari adukan beton yang menyebabkan keropos.",
+                "Retaining Wall (Dinding Penahan Tanah) mencegah longsor pada lereng.",
+                "Uji Sondir (CPT) dilakukan untuk mengetahui daya dukung tanah sebelum membangun.",
+                "Semen Portland adalah bahan pengikat utama dalam beton modern.",
+                "Bekisting (Formwork) adalah cetakan sementara untuk menahan beton cair.",
+                "Jembatan Gantung menahan beban lantai jembatan menggunakan kabel baja utama.",
+                "Beban Hidup (Live Load) adalah beban penghuni dan perabot dalam gedung.",
+                "Prestressed Concrete (Beton Prategang) ditarik kabelnya sebelum dibebani.",
+                "Dilatasi adalah celah pemisah antar bangunan untuk mengantisipasi gempa.",
+                "Lean Concrete adalah beton mutu rendah untuk lantai kerja.",
+                "Waterpass digunakan untuk mengukur beda tinggi permukaan tanah.",
+                "Theodolite digunakan untuk mengukur sudut vertikal dan horizontal.",
+                "Mutu beton K-300 artinya kuat tekan beton 300 kg/cm².",
+                "Curing beton dilakukan dengan membasahi beton agar tidak retak rambut.",
+                "Scaffolding (Perancah) adalah struktur sementara untuk pijakan pekerja.",
+                "Rangka batang (Truss) mendistribusikan beban melalui gaya tarik dan tekan.",
+                "Aspal beton (Hotmix) harus dihampar pada suhu minimal 120 derajat Celcius.",
+                "Geotekstil digunakan untuk perkuatan dan separasi lapisan tanah.",
+                "Paku bumi (Pile) dipancang menggunakan Diesel Hammer atau Hydraulic Hammer.",
+                "Bendungan urugan batu memiliki inti tanah liat kedap air.",
+                "Terowongan TBM (Tunnel Boring Machine) menggali dan memasang beton sekaligus.",
+                "Plat lantai bondek menggunakan lembaran baja bergelombang sebagai bekisting.",
+                "Kolom praktis berfungsi mengikat dinding bata agar tidak roboh."
             ],
-            MECH: [
-                "Hukum Termodinamika ke-2: Entropi sistem tertutup selalu bertambah.",
-                "Turbin gas bekerja berdasarkan siklus Brayton.",
-                "Roda gigi (Gear) digunakan untuk mentransmisikan daya.",
-                "Mesin diesel menggunakan kompresi untuk membakar bahan bakar."
-            ]
+            MECH: ["Mesin Diesel", "Hukum Termodinamika", "Turbin Gas"] 
         };
 
         const MODES = {
             WORK: { id: 'WORK', label: 'WORKING PHASE', color: 'text-amber-500' },
-            SHORT_BREAK: { id: 'SHORT_BREAK', label: 'SHORT BREAK', color: 'text-cyan-400', defaultTime: 5 * 60 },
-            LONG_BREAK: { id: 'LONG_BREAK', label: 'LONG BREAK', color: 'text-emerald-400', defaultTime: 15 * 60 }
+            SHORT_BREAK: { id: 'SHORT_BREAK', label: 'SHORT BREAK', color: 'text-cyan-400' },
+            LONG_BREAK: { id: 'LONG_BREAK', label: 'LONG BREAK', color: 'text-emerald-400' }
         };
 
         const DURATION_OPTIONS = [
@@ -191,14 +189,14 @@
         ];
 
         const WEATHERS = {
-            SUNNY: { id: 'SUNNY', label: 'CLEAR SKY', icon: <Sun size={16} className="text-yellow-400" />, bg: 'bg-gradient-to-b from-sky-400 via-sky-300 to-sky-100', overlay: 'opacity-0' },
-            OVERCAST: { id: 'OVERCAST', label: 'OVERCAST', icon: <Cloud size={16} className="text-slate-200" />, bg: 'bg-gradient-to-b from-slate-400 to-slate-300', overlay: 'opacity-10 bg-slate-500' },
-            RAINY: { id: 'RAINY', label: 'LIGHT RAIN', icon: <CloudRain size={16} className="text-blue-300" />, bg: 'bg-gradient-to-b from-slate-600 to-slate-800', overlay: 'opacity-30 bg-slate-800' },
-            WINDY: { id: 'WINDY', label: 'HIGH WINDS', icon: <Wind size={16} className="text-slate-100" />, bg: 'bg-gradient-to-b from-sky-600 to-slate-500', overlay: 'opacity-0' },
-            FOGGY: { id: 'FOGGY', label: 'HEAVY FOG', icon: <CloudFog size={16} className="text-slate-300" />, bg: 'bg-gradient-to-b from-slate-300 to-slate-400', overlay: 'opacity-80 bg-white mix-blend-overlay' },
-            SUNSET: { id: 'SUNSET', label: 'SUNSET', icon: <Sunrise size={16} className="text-orange-500" />, bg: 'bg-gradient-to-b from-indigo-800 via-purple-600 to-orange-400', overlay: 'opacity-20 bg-orange-900 mix-blend-overlay' },
-            NIGHT: { id: 'NIGHT', label: 'NIGHT OPS', icon: <Moon size={16} className="text-yellow-100" />, bg: 'bg-gradient-to-b from-black via-slate-900 to-slate-800', overlay: 'opacity-60 bg-black' },
-            STORMY: { id: 'STORMY', label: 'STORM SURGE', icon: <CloudLightning size={16} className="text-purple-400" />, bg: 'bg-gradient-to-b from-indigo-950 to-black', overlay: 'opacity-70 bg-black' },
+            SUNNY: { id: 'SUNNY', label: 'CLEAR SKY', icon: <Icons.Sun size={16} className="text-yellow-400" />, bg: 'bg-gradient-to-b from-sky-400 via-sky-300 to-sky-100', overlay: 'opacity-0' },
+            OVERCAST: { id: 'OVERCAST', label: 'OVERCAST', icon: <Icons.Cloud size={16} className="text-slate-200" />, bg: 'bg-gradient-to-b from-slate-400 to-slate-300', overlay: 'opacity-10 bg-slate-500' },
+            RAINY: { id: 'RAINY', label: 'LIGHT RAIN', icon: <Icons.CloudRain size={16} className="text-blue-300" />, bg: 'bg-gradient-to-b from-slate-600 to-slate-800', overlay: 'opacity-30 bg-slate-800' },
+            WINDY: { id: 'WINDY', label: 'HIGH WINDS', icon: <Icons.Wind size={16} className="text-slate-100" />, bg: 'bg-gradient-to-b from-sky-600 to-slate-500', overlay: 'opacity-0' },
+            FOGGY: { id: 'FOGGY', label: 'HEAVY FOG', icon: <Icons.CloudFog size={16} className="text-slate-300" />, bg: 'bg-gradient-to-b from-slate-300 to-slate-400', overlay: 'opacity-80 bg-white mix-blend-overlay' },
+            SUNSET: { id: 'SUNSET', label: 'SUNSET', icon: <Icons.Sunrise size={16} className="text-orange-500" />, bg: 'bg-gradient-to-b from-indigo-800 via-purple-600 to-orange-400', overlay: 'opacity-20 bg-orange-900 mix-blend-overlay' },
+            NIGHT: { id: 'NIGHT', label: 'NIGHT OPS', icon: <Icons.Moon size={16} className="text-yellow-100" />, bg: 'bg-gradient-to-b from-black via-slate-900 to-slate-800', overlay: 'opacity-60 bg-black' },
+            STORMY: { id: 'STORMY', label: 'STORM SURGE', icon: <Icons.CloudLightning size={16} className="text-purple-400" />, bg: 'bg-gradient-to-b from-indigo-950 to-black', overlay: 'opacity-70 bg-black' },
         };
 
         // --- MAIN COMPONENT ---
@@ -206,113 +204,112 @@
             const [currentTheme, setCurrentTheme] = useState('MARINE');
             const [isMenuOpen, setIsMenuOpen] = useState(false);
             const [isLocked, setIsLocked] = useState(false);
-            const [toast, setToast] = useState(null); // { message: string, type: 'info' | 'error' | 'success' }
+            const [toast, setToast] = useState(null);
             
             const [mode, setMode] = useState('WORK');
+            const [pomodoroCount, setPomodoroCount] = useState(0);
+            
+            const [autoStart, setAutoStart] = useState(false);
+            const [customTimes, setCustomTimes] = useState({ WORK: 25, SHORT_BREAK: 5, LONG_BREAK: 15 });
+
             const [selectedWorkDuration, setSelectedWorkDuration] = useState(25);
-            const [timeLeft, setTimeLeft] = useState(25 * 60);
-            const [totalTime, setTotalTime] = useState(25 * 60);
+            const [timeLeft, setTimeLeft] = useState(customTimes.WORK * 60);
+            const [totalTime, setTotalTime] = useState(customTimes.WORK * 60);
             const [isActive, setIsActive] = useState(false);
+            
             const [currentSound, setCurrentSound] = useState('mute');
             const [fact, setFact] = useState(FACT_DATABASE['MARINE'][0]);
             const [weather, setWeather] = useState(WEATHERS.SUNNY);
             
-            // Visual States
             const [tideLevel, setTideLevel] = useState(0);
             const [wavePath, setWavePath] = useState("");
             const [shipYOffset, setShipYOffset] = useState(0);
-            const [randomEvent, setRandomEvent] = useState(null); 
+            const [randomEvent, setRandomEvent] = useState(null);
             const [buoyState, setBuoyState] = useState({ active: true, x: 120, yOffset: 0, type: 'GREEN' });
-            
+            const [visualProgress, setVisualProgress] = useState(0);
+
             const audioSynth = useRef(new AmbientSynth());
             const timerRef = useRef(null);
-            const endTimeRef = useRef(null); 
+            const endTimeRef = useRef(null);
             const weatherTimerRef = useRef(null);
             const eventTimerRef = useRef(null);
-            const [visualProgress, setVisualProgress] = useState(0);
+            const factTimerRef = useRef(null);
 
             const skylineData = useMemo(() => {
                 const buildings = [];
                 for(let i=0; i<15; i++) {
+                    const width = 3 + Math.random() * 5;
+                    const height = 5 + Math.random() * 15;
+                    const windows = [];
+                    const rows = Math.floor(height * 2);
+                    const cols = Math.floor(width);
+                    for(let r=0; r<rows; r++) {
+                        for(let c=0; c<cols; c++) {
+                            if(Math.random() > 0.6) {
+                                windows.push({ top: r * 0.5 + 0.2, left: c * 0.8 + 0.2, on: Math.random() > 0.5 });
+                            }
+                        }
+                    }
                     buildings.push({
-                        width: 3 + Math.random() * 5, height: 5 + Math.random() * 15, margin: Math.random() * 1, color: Math.random() > 0.5 ? 'bg-slate-700' : 'bg-slate-800'
+                        width, height, margin: Math.random() * 1, 
+                        color: Math.random() > 0.5 ? 'bg-slate-700' : 'bg-slate-800',
+                        windows
                     });
                 }
                 return buildings;
             }, []);
 
-            // --- TOAST HELPER ---
             const showToast = (message, type = 'info') => {
                 setToast({ message, type });
                 setTimeout(() => setToast(null), 3000);
             };
 
-            // --- LOCK / FULLSCREEN LOGIC ---
+            const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
             const toggleLock = async () => {
                 if (!isLocked) {
                     showToast("🔒 Meminta akses Fullscreen...", "info");
                     try {
                         const elem = document.documentElement;
-                        if (elem.requestFullscreen) {
-                            await elem.requestFullscreen();
-                        } else if (elem.webkitRequestFullscreen) {
-                            await elem.webkitRequestFullscreen();
-                        } else if (elem.msRequestFullscreen) {
-                            await elem.msRequestFullscreen();
-                        }
+                        if (elem.requestFullscreen) await elem.requestFullscreen();
+                        else if (elem.webkitRequestFullscreen) await elem.webkitRequestFullscreen();
+                        else if (elem.msRequestFullscreen) await elem.msRequestFullscreen();
                         showToast("✅ Mode Fokus Aktif", "success");
-                    } catch (e) {
-                        console.log("Fullscreen blocked:", e);
-                        showToast("⚠️ Fullscreen ditolak. Mode Fokus Jendela aktif.", "error");
+                    } catch (e) { 
+                        console.log("Fullscreen blocked", e);
+                        showToast("⚠️ Fullscreen ditolak. Mode Fokus Jendela aktif.", "error"); 
                     }
-                    setIsLocked(true);
-                    setIsMenuOpen(false); // Close menu forcefully
+                    setIsLocked(true); setIsMenuOpen(false);
                 } else {
                     try {
-                        if (document.exitFullscreen) {
-                            await document.exitFullscreen();
-                        } else if (document.webkitExitFullscreen) {
-                            await document.webkitExitFullscreen();
-                        } else if (document.msExitFullscreen) {
-                            await document.msExitFullscreen();
-                        }
-                    } catch (e) {
-                        console.log("Exit fullscreen error:", e);
-                    }
-                    setIsLocked(false);
-                    showToast("🔓 Mode Fokus Nonaktif", "info");
+                        if (document.exitFullscreen) await document.exitFullscreen();
+                        else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+                    } catch (e) {}
+                    setIsLocked(false); showToast("🔓 Mode Fokus Nonaktif", "info");
                 }
             };
 
-            // Visibility Change Listener (Tab Switching Alert)
-            useEffect(() => {
-                const handleVisibilityChange = () => {
-                    if (document.hidden && isActive) {
-                        document.title = "⚠️ KEMBALI FOKUS! - ENGINEERING FLOW";
-                    } else {
-                        document.title = `ENGINEERING FLOW: Focus Timer`;
-                    }
-                };
+            const switchMode = (nextMode) => {
+                setMode(nextMode);
+                const duration = customTimes[nextMode] * 60;
+                setTotalTime(duration);
+                setTimeLeft(duration);
+                const list = FACT_DATABASE[currentTheme] || FACT_DATABASE['MARINE'];
+                setFact(list[Math.floor(Math.random() * list.length)]);
 
-                document.addEventListener("visibilitychange", handleVisibilityChange);
-                return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-            }, [isActive]);
-
-            // --- REQUEST PERMISSION ON LOAD ---
-            useEffect(() => {
-                if (Notification.permission !== "granted") {
-                    Notification.requestPermission();
+                if (autoStart) {
+                    setIsActive(true);
+                    endTimeRef.current = Date.now() + duration * 1000;
+                } else {
+                    setIsActive(false);
+                    endTimeRef.current = null;
                 }
-            }, []);
+            };
 
-            // --- CORE LOGIC WITH DRIFT FIX ---
             useEffect(() => {
                 let interval = null;
                 if (isActive) {
-                    if (!endTimeRef.current) {
-                        endTimeRef.current = Date.now() + timeLeft * 1000;
-                    }
-
+                    if (!endTimeRef.current) endTimeRef.current = Date.now() + timeLeft * 1000;
                     interval = setInterval(() => {
                         const now = Date.now();
                         const distance = endTimeRef.current - now;
@@ -320,9 +317,7 @@
 
                         if (secondsLeft >= 0) {
                             setTimeLeft(secondsLeft);
-                            if (!document.hidden) {
-                                document.title = `${formatTime(secondsLeft)} - ${currentTheme} FLOW`;
-                            }
+                            if (!document.hidden) document.title = `${formatTime(secondsLeft)} - ${mode}`;
                         } else {
                             clearInterval(interval);
                             setIsActive(false);
@@ -341,7 +336,18 @@
                             audio.play().catch(e => console.log("Audio play failed", e));
 
                             if (mode === 'WORK') {
-                                switchMode('SHORT_BREAK');
+                                const newCount = pomodoroCount + 1;
+                                setPomodoroCount(newCount);
+                                if (newCount % 4 === 0) {
+                                    switchMode('LONG_BREAK');
+                                    showToast("🎉 Long Break dimulai!", "success");
+                                } else {
+                                    switchMode('SHORT_BREAK');
+                                    showToast("☕ Short Break.", "success");
+                                }
+                            } else {
+                                switchMode('WORK');
+                                showToast("🔨 Kembali Bekerja!", "info");
                             }
                         }
                     }, 1000);
@@ -350,34 +356,27 @@
                     if (!document.hidden) document.title = "ENGINEERING FLOW: Paused";
                 }
                 return () => clearInterval(interval);
-            }, [isActive, mode, currentTheme]);
+            }, [isActive, mode, autoStart, customTimes, pomodoroCount]);
 
-            // Weather Cycle
             useEffect(() => {
                 if (isActive) {
                     weatherTimerRef.current = setInterval(() => {
                         const keys = Object.keys(WEATHERS);
-                        const randKey = keys[Math.floor(Math.random() * keys.length)];
-                        setWeather(WEATHERS[randKey]);
-                    }, 30000); 
+                        setWeather(WEATHERS[keys[Math.floor(Math.random() * keys.length)]]);
+                    }, 60000);
+                    
+                    if (currentTheme === 'MARINE') {
+                        eventTimerRef.current = setInterval(() => {
+                            if (Math.random() < 0.3) {
+                                setRandomEvent('POLICE');
+                                setTimeout(() => setRandomEvent(null), 25000);
+                            }
+                        }, 45000);
+                    }
                 }
-                return () => clearInterval(weatherTimerRef.current);
-            }, [isActive]);
-
-            // Events (Police)
-            useEffect(() => {
-                if (isActive && currentTheme === 'MARINE') {
-                    eventTimerRef.current = setInterval(() => {
-                        if (Math.random() < 0.3) {
-                            setRandomEvent('POLICE');
-                            setTimeout(() => setRandomEvent(null), 25000);
-                        }
-                    }, 45000);
-                }
-                return () => clearInterval(eventTimerRef.current);
+                return () => { clearInterval(weatherTimerRef.current); clearInterval(eventTimerRef.current); };
             }, [isActive, currentTheme]);
 
-            // Animation Loop (Physics)
             useEffect(() => {
                 let animationFrame;
                 const updateVisuals = () => {
@@ -388,17 +387,12 @@
                     });
 
                     if (currentTheme === 'MARINE') {
-                        const tideTime = Date.now() / 3000;
-                        const tide = Math.sin(tideTime) * 10; 
-                        setTideLevel(tide);
-
                         const time = Date.now() / 1000;
-                        const wavePoints = [];
+                        const tide = Math.sin(time * 0.3) * 10; 
+                        setTideLevel(tide);
                         const waveAmp = 1.5; const waveFreq = 0.1; const waveSpeed = 2;
-                        for (let x = 0; x <= 100; x++) {
-                            const y = Math.sin((x * waveFreq) + (time * waveSpeed)) * waveAmp;
-                            wavePoints.push([x, y]);
-                        }
+                        const wavePoints = [];
+                        for (let x = 0; x <= 100; x++) wavePoints.push([x, Math.sin((x * waveFreq) + (time * waveSpeed)) * waveAmp]);
                         setWavePath(`M 0,${wavePoints[0][1]} ` + wavePoints.map(p => `L ${p[0]},${p[1]}`).join(" ") + ` L 100,50 L 0,50 Z`);
 
                         const shipStart = 10; const shipEnd = 85;
@@ -406,22 +400,15 @@
                         setShipYOffset(Math.sin((currentShipX * waveFreq) + (time * waveSpeed)) * waveAmp);
 
                         setBuoyState(prev => {
-                            let newX = prev.x - 0.1; 
-                            let newType = prev.type;
-                            if (newX < -20) {
-                                newX = 120;
-                                const types = ['GREEN', 'RED', 'YELLOW'];
-                                newType = types[Math.floor(Math.random() * types.length)];
-                            }
-                            const buoyWaveY = Math.sin((newX * waveFreq) + (time * waveSpeed)) * waveAmp;
-                            return { active: true, x: newX, yOffset: buoyWaveY, type: newType };
+                            let newX = prev.x - 0.1; if (newX < -20) newX = 120;
+                            return { ...prev, x: newX, yOffset: Math.sin((newX * waveFreq) + (time * waveSpeed)) * waveAmp };
                         });
                     }
                     animationFrame = requestAnimationFrame(updateVisuals);
                 };
                 animationFrame = requestAnimationFrame(updateVisuals);
                 return () => cancelAnimationFrame(animationFrame);
-            }, [isActive, timeLeft, totalTime, visualProgress, currentTheme]);
+            }, [timeLeft, totalTime, visualProgress, currentTheme]);
 
             useEffect(() => {
                 if (isActive && currentSound !== 'mute') audioSynth.current.play(currentSound);
@@ -429,60 +416,48 @@
                 return () => audioSynth.current.stop();
             }, [isActive, currentSound]);
 
-            const switchMode = (newModeId) => {
-                setIsActive(false);
-                endTimeRef.current = null; 
-                setTimeout(() => {
-                    setMode(newModeId);
-                    const newMode = MODES[newModeId];
-                    let duration = newModeId === 'WORK' ? selectedWorkDuration * 60 : newMode.defaultTime;
-                    setTotalTime(duration);
-                    setTimeLeft(duration);
-                    
-                    const themeFacts = FACT_DATABASE[currentTheme] || FACT_DATABASE['MARINE'];
-                    setFact(themeFacts[Math.floor(Math.random() * themeFacts.length)]);
-                    setWeather(WEATHERS.SUNNY);
-                }, 10);
-            };
-
             const toggleTimer = () => setIsActive(!isActive);
-            const resetTimer = () => { if(window.confirm("Abort Mission?")) switchMode(mode); }
-            const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+            const resetTimer = () => { if(window.confirm("Abort Mission?")) switchMode(mode); };
 
-            // --- RENDERERS ---
             const renderMenu = () => (
-                <div className={`absolute top-0 right-0 z-50 bg-slate-900 border-l border-slate-700 h-full w-64 shadow-2xl transform transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}>
+                <div className={`absolute top-0 right-0 z-50 bg-slate-900 border-l border-slate-700 h-full w-80 shadow-2xl transform transition-transform duration-300 overflow-y-auto ${isMenuOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}>
                     <div className="p-4 flex justify-between items-center border-b border-slate-800">
-                        <h2 className="font-bold text-white">SYSTEM CONFIG</h2>
-                        <button onClick={() => setIsMenuOpen(false)}><X className="text-slate-400 hover:text-white"/></button>
+                        <h2 className="font-bold text-white flex items-center gap-2"><Icons.Settings size={18}/> SETTINGS</h2>
+                        <button onClick={() => setIsMenuOpen(false)}><Icons.X className="text-slate-400 hover:text-white"/></button>
                     </div>
                     <div className="p-4 space-y-6">
+                        <div>
+                            <h3 className="text-xs font-bold text-slate-500 mb-2 uppercase">Custom Timers (Min)</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                {Object.keys(customTimes).map(key => (
+                                    <div key={key}>
+                                        <label className="text-[10px] text-slate-400 block mb-1">{key.replace('_', ' ')}</label>
+                                        <input type="number" value={customTimes[key]} onChange={(e) => setCustomTimes({...customTimes, [key]: parseInt(e.target.value) || 1})} disabled={isActive} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white disabled:opacity-50"/>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold text-slate-500 uppercase">Auto-start Next?</h3>
+                            <button onClick={() => setAutoStart(!autoStart)} className={`w-10 h-5 rounded-full relative transition-colors ${autoStart ? 'bg-green-500' : 'bg-slate-700'}`}>
+                                <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${autoStart ? 'left-6' : 'left-1'}`}></div>
+                            </button>
+                        </div>
                         <div>
                             <h3 className="text-xs font-bold text-slate-500 mb-2 uppercase">Theme</h3>
                             <div className="space-y-2">
                                 {THEMES.map(theme => (
-                                    <button 
-                                        key={theme.id} 
-                                        onClick={() => { setCurrentTheme(theme.id); setIsMenuOpen(false); }} 
-                                        disabled={isLocked} // Disable when locked
-                                        className={`w-full flex items-center gap-3 p-3 rounded text-sm font-bold transition-all ${currentTheme === theme.id ? 'bg-slate-800 text-white border border-slate-600' : 'text-slate-400 hover:bg-slate-800/50'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    >
+                                    <button key={theme.id} onClick={() => { setCurrentTheme(theme.id); setFact(FACT_DATABASE[theme.id][0]); }} disabled={isLocked} className={`w-full flex items-center gap-3 p-3 rounded text-sm font-bold transition-all ${currentTheme === theme.id ? 'bg-slate-800 text-white border border-slate-600' : 'text-slate-400 hover:bg-slate-800/50'} ${isLocked ? 'opacity-50' : ''}`}>
                                         <span className={theme.color}>{theme.icon}</span> {theme.label}
                                     </button>
                                 ))}
                             </div>
-                            {isLocked && <p className="text-[10px] text-red-400 mt-2 italic">*Unlock to change theme</p>}
                         </div>
                         <div>
                             <h3 className="text-xs font-bold text-slate-500 mb-2 uppercase">Audio</h3>
-                            <div className="space-y-1">
+                            <div className="grid grid-cols-2 gap-2">
                                 {AMBIENT_SOUNDS.map(sound => (
-                                    <button 
-                                        key={sound.id} 
-                                        onClick={() => setCurrentSound(sound.id)} 
-                                        disabled={isLocked} // Disable when locked
-                                        className={`w-full flex items-center gap-2 p-2 rounded text-xs font-mono transition-all ${currentSound === sound.id ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800' : 'text-slate-400 hover:bg-slate-800'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    >
+                                    <button key={sound.id} onClick={() => setCurrentSound(sound.id)} disabled={isLocked} className={`flex items-center gap-2 p-2 rounded text-xs font-mono transition-all ${currentSound === sound.id ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800' : 'text-slate-400 hover:bg-slate-800'} ${isLocked ? 'opacity-50' : ''}`}>
                                         {sound.icon} {sound.label}
                                     </button>
                                 ))}
@@ -493,13 +468,44 @@
             );
 
             const renderWeatherEffects = () => (
-                <div className="absolute inset-0 z-30 pointer-events-none">
-                    {weather.id === 'RAINY' && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-60 animate-slide-down mix-blend-screen"></div>}
-                    {weather.id === 'STORMY' && <><div className="absolute inset-0 bg-black/40"></div><div className="absolute inset-0 animate-lightning bg-white/20 opacity-0"></div><div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-80 animate-slide-down mix-blend-screen" style={{ animationDuration: '0.5s' }}></div></>}
-                    {weather.id === 'FOGGY' && <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px] animate-pulse"></div>}
-                    {weather.id === 'SUNNY' && <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/20 rounded-full blur-[100px] animate-pulse"></div>}
+                <div className="absolute inset-0 z-30 pointer-events-none transition-opacity duration-1000">
+                    {weather.id === 'RAINY' && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-50 animate-rain-fall"></div>}
+                    {weather.id === 'STORMY' && <><div className="absolute inset-0 bg-black/40"></div><div className="absolute inset-0 animate-lightning bg-white/20 opacity-0"></div><div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-70 animate-rain-fall" style={{ animationDuration: '0.3s' }}></div></>}
+                    {weather.id === 'FOGGY' && <div className="absolute inset-0 bg-white/10 backdrop-blur-[1px] animate-pulse"></div>}
+                    {weather.id === 'SUNNY' && <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/10 rounded-full blur-[100px] animate-pulse"></div>}
                 </div>
             );
+
+            const renderShip = (duration) => {
+                if (duration === 10) {
+                    return (
+                        <>
+                            <div className="absolute top-[45%] left-0 w-full h-12 bg-slate-200 border-b-4 border-slate-400 rounded-bl-[40px] shadow-xl z-20 flex items-center transform skew-x-[-10deg]"><div className="w-full h-2 bg-orange-500 absolute top-2"></div><div className="text-[7px] font-black text-slate-800 tracking-widest ml-12 mt-4 italic">TURBO LAYER</div></div>
+                            <div className="absolute top-[20%] left-24 w-20 h-10 bg-slate-800 rounded-t-2xl z-10 skew-x-[-15deg] border-t-2 border-orange-500"><div className="w-12 h-4 bg-cyan-400/50 absolute top-2 left-2 rounded-sm"></div></div>
+                            <div className="absolute top-[55%] right-[95%] w-16 h-4 bg-orange-600 origin-top-right rotate-[15deg] rounded-l-full"></div>
+                        </>
+                    );
+                } else if (duration === 15) {
+                    return (
+                        <>
+                            <div className="absolute top-[42%] left-0 w-full h-14 bg-blue-800 border-b-4 border-blue-950 rounded-bl-3xl shadow-xl z-20 flex items-center justify-center overflow-hidden"><div className="absolute top-4 w-full h-2 bg-white"></div><div className="text-[8px] font-bold text-white tracking-widest mt-6">EXPRESS LAY</div></div>
+                            <div className="absolute top-[10%] left-10 w-20 h-20 bg-white border border-slate-300 rounded z-10 shadow-md flex flex-col p-1"><div className="w-full h-4 bg-slate-800 rounded-sm mb-1"></div><div className="w-full h-4 bg-blue-900/30 rounded-sm"></div></div>
+                            <div className="absolute top-[10%] right-10 w-8 h-24 bg-yellow-500 z-10 origin-bottom rotate-[-10deg]"><div className="absolute top-0 w-12 h-2 bg-yellow-600 rotate-[90deg] origin-left"></div></div>
+                            <div className="absolute top-[50%] right-[95%] w-20 h-16 border-t-4 border-l-4 border-yellow-600 rounded-tl-full bg-transparent transform rotate-12"></div>
+                        </>
+                    );
+                } else {
+                    return (
+                        <>
+                            <div className="absolute top-[45%] right-[90%] w-24 h-24 overflow-hidden origin-top-right rotate-12 z-0"><div className="w-32 h-20 border-t-4 border-l-4 border-red-700 rounded-tl-full bg-transparent transform rotate-12"></div></div>
+                            <div className="absolute top-[40%] left-0 w-full h-16 bg-red-900 border-b-4 border-red-950 rounded-b-xl shadow-xl z-20 flex items-center justify-center overflow-hidden"><div className="absolute top-2 w-full h-1 bg-yellow-400"></div><div className="text-[9px] font-black text-white/20 tracking-[0.5em] mt-4">HEAVY LIFT VESSEL</div></div>
+                            <div className="absolute -top-[10%] right-8 w-16 h-32 z-10 origin-bottom flex flex-col items-center"><div className="w-0 h-0 border-l-[20px] border-r-[20px] border-b-[80px] border-l-transparent border-r-transparent border-b-slate-700 relative"><div className="absolute -top-4 w-[1px] h-32 bg-black/40"></div></div><div className="w-24 h-10 bg-slate-800 absolute bottom-0 rounded-t-lg border-t border-slate-600"></div></div>
+                            <div className="absolute top-[35%] left-2 w-16 h-4 bg-green-700 border border-green-500 z-30 transform skew-x-12 shadow-md flex items-center justify-center"><span className="text-[8px] font-bold text-white transform -skew-x-12">H</span></div>
+                            <div className="absolute top-[15%] left-20 w-24 h-16 bg-white border border-slate-300 rounded-sm z-10 shadow-sm flex flex-col p-1 gap-1"><div className="w-full h-3 bg-blue-900/20"></div><div className="w-full h-3 bg-blue-900/20"></div><div className="absolute -top-3 left-9 w-1 h-3 bg-slate-600"></div><div className="absolute -top-3 left-6 w-7 h-1 bg-slate-800 animate-spin"></div></div>
+                        </>
+                    );
+                }
+            };
 
             const renderMarineScene = () => {
                 const shipStart = 10; const shipEnd = 85;
@@ -511,28 +517,22 @@
 
                 return (
                     <div className="w-full h-96 bg-slate-900/50 rounded-xl border border-white/10 relative overflow-hidden shadow-2xl backdrop-blur-sm group">
-                        <div className={`absolute inset-0 transition-all duration-2000 ${weather.bg}`}></div>
-                        <div className={`absolute inset-0 z-10 pointer-events-none transition-all duration-2000 ${weather.overlay}`}></div>
+                        <div className={`absolute inset-0 transition-all duration-3000 ${weather.bg}`}></div>
+                        <div className={`absolute inset-0 z-10 pointer-events-none transition-all duration-3000 ${weather.overlay}`}></div>
                         {renderWeatherEffects()}
-
-                        {/* Distant Rig */}
                         <div className="absolute bottom-[55%] left-[75%] opacity-40 scale-50 z-0">
                             <div className="w-16 h-32 border-l-2 border-r-2 border-slate-500 relative flex flex-col justify-end">
                                 <div className="absolute inset-0 border-t border-b border-slate-600 opacity-50"></div>
                                 <div className="absolute top-0 w-24 -left-4 h-8 bg-slate-600 flex items-center justify-center"><div className="w-1 h-6 bg-orange-500 absolute -top-6 left-2 animate-pulse"></div></div>
                             </div>
                         </div>
-
-                        {/* Waves */}
-                        <div className="absolute left-0 right-0 w-full h-full pointer-events-none z-10" style={{ top: `${currentWaterY}%` }}>
+                        <div className="absolute left-0 right-0 w-full h-full pointer-events-none z-10 transition-all duration-75" style={{ top: `${currentWaterY}%` }}>
                             <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                                 <path d={wavePath} className={`transition-colors duration-1000 ${weather.id === 'STORMY' ? 'fill-slate-800' : 'fill-cyan-900/80'}`} />
                                 <path d={wavePath.replace('L 100,50 L 0,50 Z', '')} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.3" />
                             </svg>
                             <div className={`absolute top-[0%] left-0 w-full h-[200%] transition-colors duration-1000 ${weather.id === 'STORMY' ? 'bg-slate-900' : 'bg-cyan-900/80'} backdrop-blur-sm`}></div>
                         </div>
-
-                        {/* Seabed & Pipeline (Clean - No Dashed Lines) */}
                         <div className="absolute bottom-0 left-0 right-0 h-[10%] bg-[#0b0f19] border-t border-slate-800 z-20"></div>
                         <svg className="absolute inset-0 w-full h-full z-25 pointer-events-none">
                             <defs>
@@ -543,8 +543,6 @@
                             <line x1={`${rigX}%`} y1="92%" x2={`${touchdownX}%`} y2="92%" stroke="url(#pipeGrad)" strokeWidth="4" strokeLinecap="round" mask="url(#trenchMask)"/>
                             <path d={`M ${touchdownX}% 92% C ${touchdownX + 15}% 92%, ${stingerX - 10}% ${stingerY + 10}%, ${stingerX}% ${stingerY}%`} fill="none" stroke="#fbbf24" strokeWidth="3"/>
                         </svg>
-
-                        {/* Rig A */}
                         <div className="absolute bottom-[10%] left-[2%] w-20 h-40 z-25 opacity-90 flex flex-col justify-end">
                             <div className="w-16 h-32 border-l-4 border-r-4 border-slate-600 bg-slate-800/20 relative">
                                 <div className="absolute inset-0 border-l border-r border-slate-600 skew-x-12 opacity-50"></div>
@@ -554,8 +552,6 @@
                                 <span className="text-[8px] font-bold text-slate-300">PLATFORM A</span>
                             </div>
                         </div>
-
-                        {/* Buoy */}
                         {buoyState.active && (
                             <div className="absolute z-15 transition-none" style={{ top: `${finalBuoyTop}%`, left: `${buoyState.x}%` }}>
                                 <div className="relative flex flex-col items-center origin-bottom">
@@ -567,43 +563,10 @@
                                 <div className="w-[2px] h-20 bg-black/20 mx-auto"></div>
                             </div>
                         )}
-
-                        {/* Ship */}
                         <div className="absolute w-64 h-32 z-30 transition-none" style={{ left: `calc(${currentShipPos}% - 12rem)`, top: `${finalShipTop}%` }}>
-                            {selectedWorkDuration === 10 ? (
-                                <>
-                                    <div className="absolute top-[45%] left-0 w-full h-12 bg-slate-200 border-b-4 border-slate-400 rounded-bl-[40px] shadow-xl z-20 flex items-center transform skew-x-[-10deg]">
-                                        <div className="w-full h-2 bg-orange-500 absolute top-2"></div>
-                                        <div className="text-[7px] font-black text-slate-800 tracking-widest ml-12 mt-4 italic">TURBO LAYER</div>
-                                    </div>
-                                    <div className="absolute top-[20%] left-24 w-20 h-10 bg-slate-800 rounded-t-2xl z-10 skew-x-[-15deg] border-t-2 border-orange-500"><div className="w-12 h-4 bg-cyan-400/50 absolute top-2 left-2 rounded-sm"></div></div>
-                                    <div className="absolute top-[55%] right-[95%] w-16 h-4 bg-orange-600 origin-top-right rotate-[15deg] rounded-l-full"></div>
-                                </>
-                            ) : selectedWorkDuration === 15 ? (
-                                <>
-                                    <div className="absolute top-[42%] left-0 w-full h-14 bg-blue-800 border-b-4 border-blue-950 rounded-bl-3xl shadow-xl z-20 flex items-center justify-center overflow-hidden">
-                                        <div className="absolute top-4 w-full h-2 bg-white"></div>
-                                        <div className="text-[8px] font-bold text-white tracking-widest mt-6">EXPRESS LAY</div>
-                                    </div>
-                                    <div className="absolute top-[10%] left-10 w-20 h-20 bg-white border border-slate-300 rounded z-10 shadow-md flex flex-col p-1"><div className="w-full h-4 bg-slate-800 rounded-sm mb-1"></div><div className="w-full h-4 bg-blue-900/30 rounded-sm"></div></div>
-                                    <div className="absolute top-[10%] right-10 w-8 h-24 bg-yellow-500 z-10 origin-bottom rotate-[-10deg]"><div className="absolute top-0 w-12 h-2 bg-yellow-600 rotate-[90deg] origin-left"></div></div>
-                                    <div className="absolute top-[50%] right-[95%] w-20 h-16 border-t-4 border-l-4 border-yellow-600 rounded-tl-full bg-transparent transform rotate-12"></div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="absolute top-[45%] right-[90%] w-24 h-24 overflow-hidden origin-top-right rotate-12 z-0"><div className="w-32 h-20 border-t-4 border-l-4 border-red-700 rounded-tl-full bg-transparent transform rotate-12"></div></div>
-                                    <div className="absolute top-[40%] left-0 w-full h-16 bg-red-900 border-b-4 border-red-950 rounded-b-xl shadow-xl z-20 flex items-center justify-center overflow-hidden">
-                                        <div className="absolute top-2 w-full h-1 bg-yellow-400"></div>
-                                        <div className="text-[9px] font-black text-white/20 tracking-[0.5em] mt-4">HEAVY LIFT VESSEL</div>
-                                    </div>
-                                    <div className="absolute -top-[10%] right-8 w-16 h-32 z-10 origin-bottom flex flex-col items-center"><div className="w-0 h-0 border-l-[20px] border-r-[20px] border-b-[80px] border-l-transparent border-r-transparent border-b-slate-700 relative"><div className="absolute -top-4 w-[1px] h-32 bg-black/40"></div></div><div className="w-24 h-10 bg-slate-800 absolute bottom-0 rounded-t-lg border-t border-slate-600"></div></div>
-                                    <div className="absolute top-[35%] left-2 w-16 h-4 bg-green-700 border border-green-500 z-30 transform skew-x-12 shadow-md flex items-center justify-center"><span className="text-[8px] font-bold text-white transform -skew-x-12">H</span></div>
-                                    <div className="absolute top-[15%] left-20 w-24 h-16 bg-white border border-slate-300 rounded-sm z-10 shadow-sm flex flex-col p-1 gap-1"><div className="w-full h-3 bg-blue-900/20"></div><div className="w-full h-3 bg-blue-900/20"></div><div className="absolute -top-3 left-9 w-1 h-3 bg-slate-600"></div><div className="absolute -top-3 left-6 w-7 h-1 bg-slate-800 animate-spin"></div></div>
-                                </>
-                            )}
+                            {renderShip(selectedWorkDuration)}
                             {isActive && <div className="absolute top-[50%] right-[10%] z-30"><div className="w-2 h-2 bg-blue-200 rounded-full animate-ping shadow-[0_0_20px_blue]"></div></div>}
                         </div>
-
                         {randomEvent === 'POLICE' && (
                             <div className="absolute z-35 animate-patrol-boat" style={{ top: `${currentWaterY - 5 + shipYOffset}%` }}>
                                 <div className="w-24 h-8 bg-blue-800 rounded-br-2xl flex items-center justify-center relative shadow-lg">
@@ -622,12 +585,18 @@
                 const buildingHeight = 10 + (visualProgress / 100) * 70;
                 return (
                     <div className="w-full h-96 bg-slate-900/50 rounded-xl border border-white/10 relative overflow-hidden shadow-2xl backdrop-blur-sm group">
-                        <div className={`absolute inset-0 transition-all duration-2000 ${weather.bg}`}></div>
-                        <div className={`absolute inset-0 z-10 pointer-events-none transition-all duration-2000 ${weather.overlay}`}></div>
+                        <div className={`absolute inset-0 transition-all duration-3000 ${weather.bg}`}></div>
+                        <div className={`absolute inset-0 z-10 pointer-events-none transition-all duration-3000 ${weather.overlay}`}></div>
                         {renderWeatherEffects()}
                         <div className="absolute bottom-0 w-full h-[15%] bg-stone-800 border-t-4 border-stone-600 z-20"></div>
-                        <div className="absolute bottom-[15%] left-0 w-full h-1/3 flex items-end justify-center gap-1 opacity-20 z-0">
-                            {skylineData.map((b, i) => (<div key={i} className={b.color} style={{ width: `${b.width}rem`, height: `${b.height}rem`, marginRight: `${b.margin}rem` }}></div>))}
+                        <div className="absolute bottom-[15%] left-0 w-full h-1/3 flex items-end justify-center gap-1 opacity-60 z-0">
+                            {skylineData.map((b, i) => (
+                                <div key={i} className={`${b.color} relative`} style={{ width: `${b.width}rem`, height: `${b.height}rem`, marginRight: `${b.margin}rem` }}>
+                                    {b.windows.map((w, wi) => (
+                                        <div key={wi} className={`absolute w-1 h-1 ${w.on ? 'bg-yellow-200/80 animate-pulse' : 'bg-black/30'}`} style={{ top: `${w.top}rem`, left: `${w.left}rem` }}></div>
+                                    ))}
+                                </div>
+                            ))}
                         </div>
                         <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2 w-32 bg-sky-900/80 border-x-4 border-stone-400 z-10 transition-all duration-1000 ease-linear" style={{ height: `${buildingHeight}%` }}>
                             <div className="w-full h-full opacity-50" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
@@ -668,60 +637,52 @@
                     <header className="w-full max-w-6xl z-40 p-6 flex justify-between items-center border-b border-white/5 bg-slate-900/80 backdrop-blur-md sticky top-0">
                         <div className="flex items-center gap-4">
                             <div className={`p-2 rounded border border-white/10 ${currentTheme === 'MARINE' ? 'bg-cyan-900/50 text-cyan-400' : currentTheme === 'CIVIL' ? 'bg-orange-900/50 text-orange-400' : 'bg-slate-800 text-slate-400'}`}>
-                                {currentTheme === 'MARINE' && <Anchor />} {currentTheme === 'CIVIL' && <Hammer />} {currentTheme === 'MECH' && <Settings />}
+                                {currentTheme === 'MARINE' && <Icons.Anchor />} {currentTheme === 'CIVIL' && <Icons.Hammer />} {currentTheme === 'MECH' && <Icons.Settings />}
                             </div>
                             <div>
-                                <h1 className="text-xl font-black tracking-widest uppercase text-white drop-shadow-md">{currentTheme === 'CIVIL' ? 'CONSTRUCTION FOCUS' : 'ENGINEERING FLOW'} <span className="text-amber-500 text-xs align-top ml-1">V7.6</span></h1>
+                                <h1 className="text-xl font-black tracking-widest uppercase text-white drop-shadow-md">{currentTheme === 'CIVIL' ? 'CONSTRUCTION FOCUS' : 'ENGINEERING FLOW'} <span className="text-amber-500 text-xs align-top ml-1">V8.1</span></h1>
                                 <span className="text-[10px] text-white/50 tracking-[0.2em] font-mono block">{currentTheme === 'MARINE' ? 'MARINE POMODORO' : currentTheme === 'CIVIL' ? 'CONSTRUCTION POMODORO' : 'ENGINEERING POMODORO'}</span>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="hidden md:flex items-center gap-2 text-xs font-mono text-cyan-400 bg-cyan-950/30 px-3 py-1 rounded border border-cyan-900/50">
-                                {currentTheme === 'MARINE' && <><Waves size={12} /><span>TIDE: {(tideLevel > 0 ? '+' : '')}{tideLevel.toFixed(1)}m</span></>}
-                                {currentTheme === 'CIVIL' && <><HardHat size={12} className="text-orange-400"/><span className="text-orange-400">PROGRESS: {Math.round(visualProgress)}%</span></>}
+                                {currentTheme === 'MARINE' && <><Icons.Waves size={12} /><span>TIDE: {(tideLevel > 0 ? '+' : '')}{tideLevel.toFixed(1)}m</span></>}
+                                {currentTheme === 'CIVIL' && <><Icons.HardHat size={12} className="text-orange-400"/><span className="text-orange-400">PROGRESS: {Math.round(visualProgress)}%</span></>}
                             </div>
-                            <button onClick={toggleLock} className={`p-2 rounded transition-colors ${isLocked ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'hover:bg-slate-800 text-white'}`} title="Focus Mode (Fullscreen)">
-                                {isLocked ? <Lock size={20}/> : <Unlock size={20}/>}
+                            <button onClick={toggleLock} className={`p-2 rounded transition-colors ${isLocked ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'hover:bg-slate-800 text-white'}`} title="Focus Mode">
+                                {isLocked ? <Icons.Lock size={20}/> : <Icons.Unlock size={20}/>}
                             </button>
-                            <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-slate-800 rounded transition-colors text-white"><Menu /></button>
+                            <button onClick={() => setIsMenuOpen(true)} className="p-2 hover:bg-slate-800 rounded transition-colors text-white"><Icons.Menu /></button>
                         </div>
                     </header>
                     {renderMenu()}
                     <main className="flex-1 w-full max-w-6xl relative z-10 px-6 py-4 flex flex-col justify-center">
                         {currentTheme === 'MARINE' && renderMarineScene()}
                         {currentTheme === 'CIVIL' && renderCivilScene()}
-                        {currentTheme === 'MECH' && <div className="w-full h-96 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center flex-col text-slate-500"><Settings size={48} className="mb-4 opacity-50"/><h2 className="text-xl font-bold">THEME: MECHANICAL</h2><p>Coming Soon</p></div>}
+                        {currentTheme === 'MECH' && <div className="w-full h-96 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center flex-col text-slate-500"><Icons.Settings size={48} className="mb-4 opacity-50"/><h2 className="text-xl font-bold">THEME: MECHANICAL</h2><p>Coming Soon</p></div>}
                         <div className="w-full mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                             <div className="flex flex-col pl-2">
-                                {mode === 'WORK' && !isActive && (
-                                    <div className="flex gap-2 mb-4">
-                                        {DURATION_OPTIONS.map((opt) => (
-                                            <button key={opt.id} onClick={() => { setSelectedWorkDuration(opt.id); setTotalTime(opt.id*60); setTimeLeft(opt.id*60); }} className={`flex items-center gap-2 px-4 py-2 text-[10px] font-bold rounded-full transition-all border ${selectedWorkDuration === opt.id ? 'bg-amber-500 text-black border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-transparent text-slate-400 border-slate-700 hover:border-slate-500'}`}>
-                                                {selectedWorkDuration === opt.id && <Zap size={10} className="fill-current"/>} {opt.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
                                 <div className={`text-xs font-bold tracking-widest px-4 py-1.5 rounded w-fit border mb-2 flex items-center gap-2 ${MODES[mode].color} border-current bg-white/5`}>
-                                    {isActive ? <div className="w-2 h-2 rounded-full bg-current animate-pulse"/> : <Square size={10} />} {MODES[mode].label}
+                                    {isActive ? <div className="w-2 h-2 rounded-full bg-current animate-pulse"/> : <Icons.Square size={10} />} 
+                                    {MODES[mode].label} {pomodoroCount > 0 && mode === 'WORK' && `(${pomodoroCount})`}
                                 </div>
                                 <div className="text-8xl font-black font-mono tracking-tighter text-white drop-shadow-2xl">{formatTime(timeLeft)}</div>
                             </div>
                             <div className="flex flex-col justify-center gap-4 h-full">
                                 <div className="flex gap-4 justify-end">
                                     {isActive ? (
-                                        <button onClick={toggleTimer} className="flex-1 max-w-[200px] h-16 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl flex items-center justify-center gap-3 border-b-4 border-rose-900 active:border-b-0 active:translate-y-1 transition-all shadow-lg"><Pause size={24} className="fill-current" /> PAUSE</button>
+                                        <button onClick={toggleTimer} className="flex-1 max-w-[200px] h-16 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl flex items-center justify-center gap-3 border-b-4 border-rose-900 active:border-b-0 active:translate-y-1 transition-all shadow-lg"><Icons.Pause size={24} className="fill-current" /> PAUSE</button>
                                     ) : (
-                                        <button onClick={toggleTimer} className="flex-1 max-w-[200px] h-16 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl flex items-center justify-center gap-3 border-b-4 border-amber-700 active:border-b-0 active:translate-y-1 transition-all shadow-lg"><Play size={24} className="fill-current" /> {timeLeft < totalTime ? 'RESUME' : 'LAUNCH'}</button>
+                                        <button onClick={toggleTimer} className="flex-1 max-w-[200px] h-16 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl flex items-center justify-center gap-3 border-b-4 border-amber-700 active:border-b-0 active:translate-y-1 transition-all shadow-lg"><Icons.Play size={24} className="fill-current" /> {timeLeft < totalTime ? 'RESUME' : 'LAUNCH'}</button>
                                     )}
-                                    <button onClick={resetTimer} className="w-16 h-16 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center justify-center border-b-4 border-slate-950 active:border-b-0 active:translate-y-1 transition-all"><Square size={24} className="fill-current" /></button>
+                                    <button onClick={resetTimer} className="w-16 h-16 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center justify-center border-b-4 border-slate-950 active:border-b-0 active:translate-y-1 transition-all"><Icons.Square size={24} className="fill-current" /></button>
                                 </div>
                             </div>
                         </div>
                     </main>
                     <footer className="w-full bg-slate-950/50 border-t border-white/5 p-4 mt-auto z-40 backdrop-blur-md">
                         <div className="max-w-6xl mx-auto flex items-start gap-4">
-                            <div className="bg-cyan-900/50 p-2 rounded-lg text-cyan-400 mt-1"><Search size={16} /></div>
+                            <div className="bg-cyan-900/50 p-2 rounded-lg text-cyan-400 mt-1"><Icons.Search size={16} /></div>
                             <div>
                                 <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">ENGINEERING DATABASE</h3>
                                 <p className="text-sm font-mono text-slate-300 leading-relaxed max-w-3xl">"{fact}"</p>
@@ -730,8 +691,8 @@
                     </footer>
                     {toast && (
                         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm font-bold shadow-lg animate-toast flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-900 text-red-200 border border-red-700' : toast.type === 'success' ? 'bg-green-900 text-green-200 border border-green-700' : 'bg-slate-800 text-white border border-slate-600'}`}>
-                            {toast.type === 'error' && <AlertCircle size={16}/>}
-                            {toast.type === 'success' && <CheckCircle size={16}/>}
+                            {toast.type === 'error' && <Icons.AlertCircle size={16}/>}
+                            {toast.type === 'success' && <Icons.CheckCircle size={16}/>}
                             {toast.message}
                         </div>
                     )}
@@ -760,6 +721,8 @@
                         .animate-crane-swing { animation: crane-swing 12s ease-in-out infinite; }
                         @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
                         .animate-toast { animation: fade-in-up 0.3s ease-out forwards; }
+                        @keyframes rain-fall { 0% { background-position: 0 0; } 100% { background-position: 10% 100vh; } }
+                        .animate-rain-fall { animation: rain-fall 1s linear infinite; }
                     `}} />
                 </div>
             );
@@ -767,11 +730,5 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<PipelineMaster />);
     </script>
-
-    <!-- Vercel Speed Insights -->
-    <script>
-        window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>
 </html>
